@@ -9,7 +9,7 @@
 '''
 # Bibliotecas importadas
 import dash
-from dash import Dash, html, dcc, Input, Output
+from dash import Dash, html, dcc, Input, Output, dash_table
 import plotly.express as px
 import pandas as pd
 from flask import Flask, render_template, request
@@ -126,29 +126,65 @@ ranking_agravos['Rank'] = ranking_agravos['QTDE-TOTAL'].rank(ascending=False, me
 
 
 # cria o gráfico
-fig = px.bar(df_sv2, x="SEMANA", y="QTDE-TOTAL", color="STS", barmode="group")
-opcoes = list(df_sv2['STS'].unique())
-opcoes.append("Todos os Territórios")
+fig = px.bar(df_sv2, x="SEMANA", y="QTDE-TOTAL", color="STS", barmode="group", title='Notificações Por STS')  
 
+fig_pizza = px.pie(df_sv2, values='QTDE-TOTAL', names='INFORMANTE', title='Notificações Por Unidade')
+
+fig_line = px.line(df_sv2, x="SEMANA", y="QTDE-TOTAL", color='DOENCA_AGRAVO', title='Linha temporal de notificacões por agravo')
+
+
+#cria opções de seleção para filtrar o gráfico
+    #Filtro de STS
+opcoes_sts = list(df_sv2['STS'].unique())
+opcoes_sts.append("Todos os Territórios")
+    #Filtro de Agravos
 opcoes_agravo = list(df_sv2['DOENCA_AGRAVO'].unique())
 opcoes_agravo.append("Todos os Agravos")
 
 # Cria o layout, podendo usar itens de html ou itens de gráfico (dcc)
 app.layout = html.Div(children=[
     html.H1(children='Semana Epidemiológica - SV2'),
-    html.H2(children='Gráfico com a quantidade total de notificações por território (STS)'),
+    html.H2(children='Relatório Mensal de Monitoramento de Agravos Por Território (STS)'),
     html.Div(children='''
-        Obs: não está separado por agravos.
+        
+    Os dados abaixo são referentes aos registros dos agravos de notificação obrigatória, por semana epidemiológica.
+    
     '''),
-
-    dcc.Dropdown(opcoes, value='Todos os Territórios', id='lista_STS'),
+    
+    dcc.Dropdown(opcoes_sts, value='Todos os Territórios', id='lista_STS'),
     dcc.Dropdown(opcoes_agravo, value='Todos os Agravos', id='lista_agravos'),
 
     dcc.Graph(
         id='grafico_quantidade_agravos',
         figure=fig
-    )
-])
+    ),
+
+    dcc.Graph(
+        id='grafico_pizza_notificacoes',
+        figure=fig_pizza
+    ),
+
+    dcc.Graph(
+        id='grafico_line_agravos',
+        figure=fig_line
+    ),
+
+    
+    html.Div([
+        html.H2(children='Raking de Agravos'),
+        dash_table.DataTable(
+            id='tabela-ranking-agravos',
+            columns=[
+                {"name": col, "id": col} for col in ranking_agravos.columns
+            ],
+            data=ranking_agravos.head(10).to_dict('records'),
+            style_table={'width': '50%', 'margin': 'auto'},
+        )
+    ])
+
+],
+style={'margin': 'auto', 'width': '70%'} 
+)
 
 # Define a rota do Flask para o Dash
 @server.route('/')
@@ -157,20 +193,37 @@ def index():
 
 @app.callback(
     Output('grafico_quantidade_agravos', 'figure'),
+    Output('grafico_pizza_notificacoes', 'figure'),
+    Output('grafico_line_agravos', 'figure'),
     [Input('lista_STS', 'value'),
     Input('lista_agravos', 'value')]
 )
 def update_output(sts_selecionada, agravo_selecionado):
-    if sts_selecionada == "Todos os Territórios":
-        fig = px.bar(df_sv2, x="SEMANA", y="QTDE-TOTAL", color="STS", barmode="group")
-    elif agravo_selecionado == "Todos os Agravos":
-        fig = px.bar(df_sv2, x="SEMANA", y="QTDE-TOTAL", color="STS", barmode="group")
+    if (sts_selecionada == "Todos os Territórios" and agravo_selecionado == "Todos os Agravos"):
+        fig = px.bar(df_sv2, x="SEMANA", y="QTDE-TOTAL", color="STS", barmode="group", title='Notificações Por STS')
+        fig_pizza = px.pie(df_sv2, values='QTDE-TOTAL', names='INFORMANTE', title='Notificações Por Unidade')
+        fig_line = px.line(df_sv2, x="SEMANA", y="QTDE-TOTAL", color='DOENCA_AGRAVO', title='Linha temporal de notificacões por agravo')
+        
+
+    elif (sts_selecionada == "Todos os Territórios" and agravo_selecionado != "Todos os Agravos"):
+        tabela_filtrada = df_sv2.loc[(df_sv2['DOENCA_AGRAVO']==agravo_selecionado)]
+        fig = px.bar(tabela_filtrada, x="SEMANA", y="QTDE-TOTAL", color="STS", barmode="group", title='Notificações Por STS')
+        fig_pizza = px.pie(tabela_filtrada, values='QTDE-TOTAL', names='INFORMANTE', title='Notificações Por Unidade')
+        fig_line = px.line(df_sv2, x="SEMANA", y="QTDE-TOTAL", color='DOENCA_AGRAVO', title='Linha temporal de notificacões por agravo')
+
+    elif (sts_selecionada != "Todos os Territórios" and agravo_selecionado == "Todos os Agravos"):
+        tabela_filtrada = df_sv2.loc[(df_sv2['STS']==sts_selecionada)]
+        fig = px.bar(tabela_filtrada, x="SEMANA", y="QTDE-TOTAL", color="STS", barmode="group", title='Notificações Por STS')
+        fig_pizza = px.pie(tabela_filtrada, values='QTDE-TOTAL', names='INFORMANTE', title='Notificações Por Unidade')
+        fig_line = px.line(tabela_filtrada, x="SEMANA", y="QTDE-TOTAL", color='DOENCA_AGRAVO', title='Linha temporal de notificacões por agravo')
     else:
         tabela_filtrada = df_sv2.loc[(df_sv2['STS']==sts_selecionada) & (df_sv2['DOENCA_AGRAVO']==agravo_selecionado)]
-        fig = px.bar(tabela_filtrada, x="SEMANA", y="QTDE-TOTAL", color="STS", barmode="group")
+        fig = px.bar(tabela_filtrada, x="SEMANA", y="QTDE-TOTAL", color="STS", barmode="group", title='Notificações Por STS')
+        fig_pizza = px.pie(tabela_filtrada, values='QTDE-TOTAL', names='INFORMANTE', title='Notificações Por Unidade')
+        fig_line = px.line(tabela_filtrada, x="SEMANA", y="QTDE-TOTAL", color='DOENCA_AGRAVO', title='Linha temporal de notificacões por agravo')
+    return fig, fig_pizza, fig_line
 
-    return fig
 
-
+#para colocar o site no ar
 if __name__ == '__main__':
     app.run_server(debug=True)
