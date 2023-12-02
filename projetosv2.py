@@ -6,21 +6,24 @@
     4. deactivate para desativar
     5. py -m pip install dash
     6. pip instsall openpyxl
+    7. py -m pip install dash-bootstrap-components
 '''
 # Bibliotecas importadas
 import dash
 from dash import Dash, html, dcc, Input, Output, dash_table
+import dash_bootstrap_components as dbc
 import plotly.express as px
 import pandas as pd
-from flask import Flask, render_template, request
+from flask import Flask, config, render_template, request
 import datetime
+import plotly.io as pio
 
 # Inicializa o Flask
 server = Flask(__name__)
 
 # Inicializa o aplicativo Dash
-app = dash.Dash(__name__, server=server)
-
+#app = dash.Dash(__name__, server=server)
+app = Dash(external_stylesheets=[dbc.themes.SLATE])
 
 
 # Acessa a base de dados
@@ -125,13 +128,24 @@ ranking_agravos['Rank'] = ranking_agravos['QTDE-TOTAL'].rank(ascending=False, me
 
 
 
+
+
+
+
+
+
 # cria o gráfico
+pio.templates.default = "plotly_dark"
+
+
 fig = px.bar(df_sv2, x="SEMANA", y="QTDE-TOTAL", color="STS", barmode="group", title='Notificações Por STS')  
+fig.update_layout(template='plotly_dark')
 
 fig_pizza = px.pie(df_sv2, values='QTDE-TOTAL', names='INFORMANTE', title='Notificações Por Unidade')
+fig_pizza.update_layout(template='plotly_dark')
 
 fig_line = px.line(df_sv2, x="SEMANA", y="QTDE-TOTAL", color='DOENCA_AGRAVO', title='Linha temporal de notificacões por agravo')
-
+fig_line.update_layout(template='plotly_dark')
 
 #cria opções de seleção para filtrar o gráfico
     #Filtro de STS
@@ -141,28 +155,59 @@ opcoes_sts.append("Todos os Territórios")
 opcoes_agravo = list(df_sv2['DOENCA_AGRAVO'].unique())
 opcoes_agravo.append("Todos os Agravos")
 
+
+
+
+
+
+
+
+
+
 # Cria o layout, podendo usar itens de html ou itens de gráfico (dcc)
 app.layout = html.Div(children=[
-    html.H1(children='Semana Epidemiológica - SV2'),
-    html.H2(children='Relatório Mensal de Monitoramento de Agravos Por Território (STS)'),
+    html.H1(children='Semana Epidemiológica - SV2', style={'margin-bottom': '30px', 'margin-top': '30px', 'textAlign': 'center'}),
+    html.H4(children='Relatório Mensal de Monitoramento de Agravos Por Território (STS)', style={'margin-bottom': '30px', 'margin-top': '30px', 'textAlign': 'center'}),
     html.Div(children='''
         
     Os dados abaixo são referentes aos registros dos agravos de notificação obrigatória, por semana epidemiológica.
     
     '''),
-    
+    html.Br(),
     dcc.Dropdown(opcoes_sts, value='Todos os Territórios', id='lista_STS'),
+    html.Br(),
     dcc.Dropdown(opcoes_agravo, value='Todos os Agravos', id='lista_agravos'),
+    html.Br(),
+
+
+   
+    dcc.DatePickerRange(
+        id='date-picker-range',
+        start_date=df_sv2['DATA_NOTIFICACAO'].min(),
+        end_date=df_sv2['DATA_NOTIFICACAO'].max(),
+        display_format='DD/MM/YYYY'
+    ),
+    html.Br(),
+   
+
+
+
+
+    html.H2(children='Notificações Por STS', style={'margin-bottom': '30px', 'margin-top': '30px', 'textAlign': 'center'}),
 
     dcc.Graph(
         id='grafico_quantidade_agravos',
         figure=fig
     ),
 
+    html.H2(children='Notificações Por Unidade', style={'margin-bottom': '30px', 'margin-top': '30px', 'textAlign': 'center'}),
+
     dcc.Graph(
         id='grafico_pizza_notificacoes',
         figure=fig_pizza
     ),
+
+    html.H2(children='Linha Temporal de Notificações Por Agravo', style={'margin-bottom': '30px', 'margin-top': '30px', 'textAlign': 'center'}),
 
     dcc.Graph(
         id='grafico_line_agravos',
@@ -171,7 +216,8 @@ app.layout = html.Div(children=[
 
     
     html.Div([
-        html.H2(children='Raking de Agravos'),
+        html.H2(children='Ranking de Agravos', style={'margin-bottom': '30px', 'margin-top': '30px', 'textAlign': 'center'}),
+        html.Br(),
         dash_table.DataTable(
             id='tabela-ranking-agravos',
             columns=[
@@ -179,6 +225,16 @@ app.layout = html.Div(children=[
             ],
             data=ranking_agravos.head(10).to_dict('records'),
             style_table={'width': '50%', 'margin': 'auto'},
+            style_header={
+                'backgroundColor': '#333',  # Cor de fundo para o cabeçalho
+                'color': 'white'  # Cor do texto para o cabeçalho
+            },
+            style_cell={
+                'backgroundColor': '#444',  # Cor de fundo para as células
+                'color': 'white'  # Cor do texto para as células
+            },
+            page_current=0,
+            page_size=10,
         )
     ])
 
@@ -197,7 +253,12 @@ def index():
     Output('grafico_line_agravos', 'figure'),
     [Input('lista_STS', 'value'),
     Input('lista_agravos', 'value')]
+    #Input('date-picker-range', 'start_date'),
+    #Input('date-picker-range', 'end_date')]
 )
+
+
+
 def update_output(sts_selecionada, agravo_selecionado):
     if (sts_selecionada == "Todos os Territórios" and agravo_selecionado == "Todos os Agravos"):
         fig = px.bar(df_sv2, x="SEMANA", y="QTDE-TOTAL", color="STS", barmode="group", title='Notificações Por STS')
@@ -222,6 +283,41 @@ def update_output(sts_selecionada, agravo_selecionado):
         fig_pizza = px.pie(tabela_filtrada, values='QTDE-TOTAL', names='INFORMANTE', title='Notificações Por Unidade')
         fig_line = px.line(tabela_filtrada, x="SEMANA", y="QTDE-TOTAL", color='DOENCA_AGRAVO', title='Linha temporal de notificacões por agravo')
     return fig, fig_pizza, fig_line
+
+
+
+
+
+'''
+def update_output(start_date, end_date, sts_selecionada, agravo_selecionado):
+    filtered_df = df_sv2[(df_sv2['DATA_NOTIFICACAO'] >= start_date) & (df_sv2['DATA_NOTIFICACAO'] <= end_date)]
+
+    if (sts_selecionada == "Todos os Territórios" and agravo_selecionado == "Todos os Agravos"):
+        fig = px.bar(filtered_df, x="SEMANA", y="QTDE-TOTAL", color="STS", barmode="group", title='Notificações Por STS')
+        fig_pizza = px.pie(filtered_df, values='QTDE-TOTAL', names='INFORMANTE', title='Notificações Por Unidade')
+        fig_line = px.line(filtered_df, x="SEMANA", y="QTDE-TOTAL", color='DOENCA_AGRAVO', title='Linha temporal de notificações por agravo')
+
+    elif (sts_selecionada == "Todos os Territórios" and agravo_selecionado != "Todos os Agravos"):
+        tabela_filtrada = filtered_df.loc[(filtered_df['DOENCA_AGRAVO'] == agravo_selecionado)]
+        fig = px.bar(tabela_filtrada, x="SEMANA", y="QTDE-TOTAL", color="STS", barmode="group", title='Notificações Por STS')
+        fig_pizza = px.pie(tabela_filtrada, values='QTDE-TOTAL', names='INFORMANTE', title='Notificações Por Unidade')
+        fig_line = px.line(filtered_df, x="SEMANA", y="QTDE-TOTAL", color='DOENCA_AGRAVO', title='Linha temporal de notificações por agravo')
+
+    elif (sts_selecionada != "Todos os Territórios" and agravo_selecionado == "Todos os Agravos"):
+        tabela_filtrada = filtered_df.loc[(filtered_df['STS'] == sts_selecionada)]
+        fig = px.bar(tabela_filtrada, x="SEMANA", y="QTDE-TOTAL", color="STS", barmode="group", title='Notificações Por STS')
+        fig_pizza = px.pie(tabela_filtrada, values='QTDE-TOTAL', names='INFORMANTE', title='Notificações Por Unidade')
+        fig_line = px.line(tabela_filtrada, x="SEMANA", y="QTDE-TOTAL", color='DOENCA_AGRAVO', title='Linha temporal de notificações por agravo')
+
+    else:
+        tabela_filtrada = filtered_df.loc[(filtered_df['STS'] == sts_selecionada) & (filtered_df['DOENCA_AGRAVO'] == agravo_selecionado)]
+        fig = px.bar(tabela_filtrada, x="SEMANA", y="QTDE-TOTAL", color="STS", barmode="group", title='Notificações Por STS')
+        fig_pizza = px.pie(tabela_filtrada, values='QTDE-TOTAL', names='INFORMANTE', title='Notificações Por Unidade')
+        fig_line = px.line(tabela_filtrada, x="SEMANA", y="QTDE-TOTAL", color='DOENCA_AGRAVO', title='Linha temporal de notificações por agravo')
+
+
+    return fig, fig_pizza, fig_line
+'''
 
 
 #para colocar o site no ar
